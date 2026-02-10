@@ -3,6 +3,7 @@ const { ElectronBlocker } = require("@cliqz/adblocker-electron")
 const { autoUpdater } = require("electron-updater")
 const fetch = require("cross-fetch")
 const path = require("path")
+const fs = require("fs")
 
 app.setName("Cortex")
 app.disableHardwareAcceleration()
@@ -10,15 +11,48 @@ app.disableHardwareAcceleration()
 let win
 let tabs = []
 let activeTab = 0
+let blocker
 
 const BAR_HEIGHT = 96
 const PARTITION = "persist:cortex"
+const FILTER_REFRESH_HOURS = 6
 
 function normalize(input) {
   input = input.trim()
   if (/^https?:\/\//i.test(input)) return input
   if (input.includes(".") && !input.includes(" ")) return "https://" + input
   return "https://www.google.com/search?q=" + encodeURIComponent(input)
+}
+
+async function initBlocker(force = false) {
+  const store = path.join(app.getPath("userData"), "adblocker.bin")
+  const meta = path.join(app.getPath("userData"), "adblocker.meta.json")
+  let refresh = force
+
+  try {
+    const { mtimeMs } = fs.statSync(meta)
+    if (Date.now() - mtimeMs > FILTER_REFRESH_HOURS * 3600000) refresh = true
+  } catch {
+    refresh = true
+  }
+
+  if (!blocker || refresh) {
+    blocker = await ElectronBlocker.fromLists(
+      fetch,
+      [
+        "https://easylist.to/easylist/easylist.txt",
+        "https://easylist.to/easylist/easyprivacy.txt",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/quick-fixes.txt",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/unbreak.txt",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/privacy.txt",
+        "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/resource-abuse.txt"
+      ],
+      { path: store, enableCompression: true }
+    )
+    fs.writeFileSync(meta, JSON.stringify({ t: Date.now() }))
+    blocker.enableBlockingInSession(session.fromPartition(PARTITION))
+  }
 }
 
 async function createWindow() {
@@ -36,19 +70,7 @@ async function createWindow() {
     }
   })
 
-  const blocker = await ElectronBlocker.fromLists(
-    fetch,
-    [
-      "https://easylist.to/easylist/easylist.txt",
-      "https://easylist.to/easylist/easyprivacy.txt"
-    ],
-    {
-      path: path.join(app.getPath("userData"), "adblocker.bin"),
-      enableCompression: true
-    }
-  )
-
-  blocker.enableBlockingInSession(session.fromPartition(PARTITION))
+  await initBlocker()
 
   session.fromPartition(PARTITION).setPermissionRequestHandler((_, p, cb) => {
     if (p === "fullscreen" || p === "pointerLock") return cb(true)
@@ -57,7 +79,6 @@ async function createWindow() {
 
   createTab("https://www.google.com")
   win.loadFile("index.html")
-
   win.on("resize", resizeTabs)
 }
 
@@ -74,8 +95,18 @@ function createTab(url) {
   view.webContents.loadURL(url)
   view.webContents.on("did-navigate", sendTabs)
   view.webContents.on("did-navigate-in-page", sendTabs)
-  view.webContents.on("enter-html-full-screen", () => win.setFullScreen(true))
-  view.webContents.on("leave-html-full-screen", () => win.setFullScreen(false))
+
+  view.webContents.on("enter-html-full-screen", () => {
+    win.setFullScreen(true)
+    win.webContents.send("fullscreen", true)
+    fixView()
+  })
+
+  view.webContents.on("leave-html-full-screen", () => {
+    win.setFullScreen(false)
+    win.webContents.send("fullscreen", false)
+    fixView()
+  })
 
   tabs.push(view)
   setActiveTab(tabs.length - 1)
@@ -83,11 +114,7 @@ function createTab(url) {
 
 function setActiveTab(index) {
   if (!tabs[index]) return
-
-  tabs.forEach((t, i) => {
-    t.webContents.setBackgroundThrottling(i !== index)
-  })
-
+  tabs.forEach((t, i) => t.webContents.setBackgroundThrottling(i !== index))
   win.setBrowserView(null)
   activeTab = index
   win.setBrowserView(tabs[activeTab])
@@ -97,18 +124,11 @@ function setActiveTab(index) {
 
 function closeTab(index) {
   if (!tabs[index]) return
-
   if (index === activeTab) win.setBrowserView(null)
-
-  try {
-    tabs[index].webContents.destroy()
-  } catch {}
-
+  try { tabs[index].webContents.destroy() } catch {}
   tabs.splice(index, 1)
   activeTab = Math.max(0, activeTab - 1)
-
   if (tabs[activeTab]) win.setBrowserView(tabs[activeTab])
-
   resizeTabs()
   sendTabs()
 }
@@ -122,6 +142,13 @@ function resizeTabs() {
     width: b.width,
     height: b.height - BAR_HEIGHT
   })
+  tabs[activeTab].setAutoResize({ width: true, height: true })
+}
+
+function fixView() {
+  win.setBrowserView(null)
+  win.setBrowserView(tabs[activeTab])
+  resizeTabs()
 }
 
 function sendTabs() {
@@ -139,21 +166,17 @@ ipcMain.handle("navigate", (_, v) => tabs[activeTab].webContents.loadURL(normali
 ipcMain.handle("back", () => tabs[activeTab].webContents.canGoBack() && tabs[activeTab].webContents.goBack())
 ipcMain.handle("forward", () => tabs[activeTab].webContents.canGoForward() && tabs[activeTab].webContents.goForward())
 ipcMain.handle("reload", () => tabs[activeTab].webContents.reloadIgnoringCache())
+ipcMain.handle("filters:refresh", () => initBlocker(true))
 
 app.whenReady().then(() => {
   createWindow()
-  globalShortcut.register("F11", () => win.setFullScreen(!win.isFullScreen()))
+  globalShortcut.register("F11", () => {
+    const fs = !win.isFullScreen()
+    win.setFullScreen(fs)
+    win.webContents.send("fullscreen", fs)
+    fixView()
+  })
   autoUpdater.checkForUpdatesAndNotify()
 })
 
-app.on("before-quit", () => {
-  tabs.forEach(t => {
-    try {
-      t.webContents.destroy()
-    } catch {}
-  })
-})
-
-app.on("window-all-closed", () => {
-  app.quit()
-})
+app.on("window-all-closed", () => app.quit())
