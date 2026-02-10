@@ -1,0 +1,43 @@
+{
+  "name": "cortex",
+  "productName": "Cortex",
+  "version": "1.0.0",
+  "description": "Cortex Browser",
+  "main": "main.js",
+  "author": "Cortex",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "npx electron-builder"
+  },
+  "dependencies": {
+    "@cliqz/adblocker-electron": "^1.34.0",
+    "cross-fetch": "^3.1.8"
+  },
+  "devDependencies": {
+    "electron": "^28.2.0",
+    "electron-builder": "^26.7.0"
+  },
+  "build": {
+    "appId": "com.cortex.browser",
+    "productName": "Cortex",
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist"
+    },
+    "files": [
+      "**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Cortex"
+    }
+  }
+}
