@@ -1,6 +1,8 @@
 const { app, BrowserWindow, BrowserView, ipcMain, globalShortcut, session } = require("electron")
 const { ElectronBlocker } = require("@cliqz/adblocker-electron")
+const { autoUpdater } = require("electron-updater")
 const fetch = require("cross-fetch")
+const path = require("path")
 
 app.setName("Cortex")
 app.disableHardwareAcceleration()
@@ -24,20 +26,27 @@ async function createWindow() {
     width: 1200,
     height: 800,
     title: "Cortex",
-    icon: __dirname + "/assets/icon.png",
+    icon: path.join(__dirname, "assets/icon.png"),
     backgroundColor: "#0b0d12",
     autoHideMenuBar: true,
     webPreferences: {
-      preload: __dirname + "/preload.js",
+      preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       sandbox: true
     }
   })
 
-  const blocker = await ElectronBlocker.fromLists(fetch, [
-    "https://easylist.to/easylist/easylist.txt",
-    "https://easylist.to/easylist/easyprivacy.txt"
-  ])
+  const blocker = await ElectronBlocker.fromLists(
+    fetch,
+    [
+      "https://easylist.to/easylist/easylist.txt",
+      "https://easylist.to/easylist/easyprivacy.txt"
+    ],
+    {
+      path: path.join(app.getPath("userData"), "adblocker.bin"),
+      enableCompression: true
+    }
+  )
 
   blocker.enableBlockingInSession(session.fromPartition(PARTITION))
 
@@ -63,10 +72,8 @@ function createTab(url) {
   })
 
   view.webContents.loadURL(url)
-
   view.webContents.on("did-navigate", sendTabs)
   view.webContents.on("did-navigate-in-page", sendTabs)
-
   view.webContents.on("enter-html-full-screen", () => win.setFullScreen(true))
   view.webContents.on("leave-html-full-screen", () => win.setFullScreen(false))
 
@@ -136,6 +143,7 @@ ipcMain.handle("reload", () => tabs[activeTab].webContents.reloadIgnoringCache()
 app.whenReady().then(() => {
   createWindow()
   globalShortcut.register("F11", () => win.setFullScreen(!win.isFullScreen()))
+  autoUpdater.checkForUpdatesAndNotify()
 })
 
 app.on("before-quit", () => {

@@ -1,175 +1,57 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <title>Cortex</title>
-
 <style>
-:root{
-  --bg:#0b0d12;
-  --panel:#121621;
-  --panel-soft:#161b2b;
-  --panel-active:#1f2740;
-  --text:#e8eaf0;
-  --muted:#9aa0b3;
-}
-
+:root{--bg:#0b0d12;--panel:#121621;--panel-soft:#161b2b;--text:#e8eaf0;--muted:#9aa0b3}
 *{box-sizing:border-box}
-
-body{
-  margin:0;
-  font-family:system-ui,-apple-system,Segoe UI,Roboto;
-  background:linear-gradient(180deg,#0b0d12,#0e1220);
-  color:var(--text);
-}
-
-#window{
-  width:100vw;
-  height:100vh;
-  display:flex;
-  flex-direction:column;
-}
-
-#tabsbar{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  padding:8px;
-  background:#0f1324;
-}
-
-.tab{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  padding:6px 12px;
-  border-radius:10px;
-  background:var(--panel-soft);
-  cursor:pointer;
-  user-select:none;
-  font-size:12px;
-}
-
-.tab.active{
-  background:var(--panel-active);
-}
-
-.tab span{
-  opacity:.6;
-  cursor:pointer;
-}
-
-#addtab{
-  width:28px;
-  height:28px;
-  border-radius:8px;
-  background:var(--panel-soft);
-  border:none;
-  color:var(--text);
-  cursor:pointer;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
-
-#topbar{
-  padding:10px;
-  display:flex;
-  align-items:center;
-  gap:10px;
-  background:rgba(18,22,33,.85);
-  backdrop-filter:blur(16px);
-}
-
-.icon-btn{
-  width:32px;
-  height:32px;
-  border-radius:8px;
-  background:var(--panel-soft);
-  border:none;
-  color:var(--text);
-  cursor:pointer;
-}
-
-#urlbar{
-  flex:1;
-  display:flex;
-  align-items:center;
-  padding:8px 16px;
-  border-radius:999px;
-  background:linear-gradient(180deg,#121735,#0f1324);
-}
-
-#url{
-  flex:1;
-  background:none;
-  border:none;
-  color:var(--text);
-  font-size:14px;
-}
-
-#url:focus{outline:none}
-
-#view-placeholder{
-  flex:1;
-  margin:10px;
-  border-radius:18px 18px 0 0;
-  background:#000;
-}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto;background:linear-gradient(180deg,#0b0d12,#0e1220);color:var(--text)}
+#window{width:100vw;height:100vh;display:flex;flex-direction:column}
+#topbar{padding:12px;display:flex;align-items:center;gap:12px;background:rgba(18,22,33,.85);backdrop-filter:blur(16px);transition:transform .18s ease}
+#controls{display:flex;gap:6px}
+.icon-btn{width:34px;height:34px;border-radius:10px;background:var(--panel-soft);border:none;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center}
+#urlbar{flex:1;display:flex;align-items:center;gap:10px;padding:10px 16px;background:#0f1324;border-radius:999px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),0 6px 16px rgba(0,0,0,.4)}
+#url{flex:1;background:none;border:none;color:var(--text);font-size:14px}
+.tabs{display:flex;gap:8px;align-items:center}
+.tab{background:var(--panel-soft);padding:6px 10px;border-radius:12px;cursor:pointer}
+.hidden{transform:translateY(-120%)}
 </style>
 </head>
-
 <body>
-
 <div id="window">
-
-  <div id="tabsbar"></div>
-
   <div id="topbar">
-    <button class="icon-btn" onclick="back()">←</button>
-    <button class="icon-btn" onclick="forward()">→</button>
-    <button class="icon-btn" onclick="reload()">⟳</button>
-
-    <div id="urlbar">
-      <input id="url" placeholder="Buscar en la web o escribir una URL">
+    <div id="controls">
+      <button class="icon-btn" id="back">←</button>
+      <button class="icon-btn" id="forward">→</button>
+      <button class="icon-btn" id="reload">⟳</button>
     </div>
+    <div id="urlbar">
+      <input id="url" placeholder="Buscar en la web">
+    </div>
+    <div class="tabs" id="tabs"></div>
+    <button class="icon-btn" id="newtab">+</button>
+    <button class="icon-btn" id="refreshFilters">↻</button>
   </div>
-
-  <div id="view-placeholder"></div>
-
 </div>
-
 <script>
-const tabsBar = document.getElementById("tabsbar")
-const urlInput = document.getElementById("url")
-
-function back(){ window.browser.back() }
-function forward(){ window.browser.forward() }
-function reload(){ window.browser.reload() }
-
-function navigate(){
-  const v = urlInput.value.trim()
-  if(v) window.browser.navigate(v)
-}
-
-urlInput.addEventListener("keydown", e => {
-  if(e.key === "Enter") navigate()
-})
-
-window.browser.onTabs(tabs => {
-  tabsBar.innerHTML = `
-    ${tabs.map(t => `
-      <div class="tab ${t.active ? "active":""}" onclick="browser.switchTab(${t.id})">
-        ${t.url.replace(/^https?:\/\//,"").slice(0,24) || "Nueva pestaña"}
-        <span onclick="event.stopPropagation();browser.closeTab(${t.id})">✕</span>
-      </div>
-    `).join("")}
-    <button id="addtab" onclick="browser.newTab()">＋</button>
-  `
-  const active = tabs.find(t => t.active)
-  if(active) urlInput.value = active.url
-})
+const urlInput=document.getElementById("url")
+const backBtn=document.getElementById("back")
+const forwardBtn=document.getElementById("forward")
+const reloadBtn=document.getElementById("reload")
+const newTabBtn=document.getElementById("newtab")
+const tabsEl=document.getElementById("tabs")
+const topbar=document.getElementById("topbar")
+const refreshFiltersBtn=document.getElementById("refreshFilters")
+urlInput.addEventListener("keydown",e=>{if(e.key==="Enter"){window.electronAPI.navigate(normalize(urlInput.value.trim()))}})
+backBtn.onclick=()=>window.electronAPI.back()
+forwardBtn.onclick=()=>window.electronAPI.forward()
+reloadBtn.onclick=()=>window.electronAPI.reload()
+newTabBtn.onclick=()=>window.electronAPI.newTab()
+refreshFiltersBtn.onclick=()=>window.electronAPI.refreshFilters()
+window.electronAPI.onTabs(tabs=>{tabsEl.innerHTML="";tabs.forEach(t=>{const b=document.createElement("div");b.className="tab";b.textContent=t.url.replace(/^https?:\/\//,"").replace(/\/.*/,"");b.onclick=()=>window.electronAPI.switchTab(t.id);tabsEl.appendChild(b)})})
+window.electronAPI.onFullScreen(f=>{if(f){topbar.classList.add("hidden")}else{topbar.classList.remove("hidden")}})
+function normalize(text){if(!text) return "https://www.google.com"; if(!text.includes(".")) return "https://www.google.com/search?q="+encodeURIComponent(text); if(!/^https?:\/\//i.test(text)) return "https://"+text; return text}
 </script>
-
 </body>
 </html>
